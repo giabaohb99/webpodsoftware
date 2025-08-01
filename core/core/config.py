@@ -40,6 +40,18 @@ class Settings(BaseSettings):
     AWS_REGION_NAME: str
     AWS_S3_BUCKET_NAME: Optional[str] = None
 
+    # Email settings
+    SMTP_SERVER: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = "demopodnoreply@gmail.com"
+    SMTP_PASSWORD: str = "lyvinsoqqzrqkmwf"
+    ADMIN_EMAIL: str = "demopodnoreply@gmail.com"
+    ADMIN_SUPPORT_EMAIL: str = "kirito993255@gmail.com"
+    FROM_EMAIL: str = "demopodnoreply@gmail.com"
+
+    COMPANY_NAME: str = "POD Software"
+    ADMIN_DASHBOARD_URL: str = "http://localhost:8000/admin/support"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

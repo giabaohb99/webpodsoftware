@@ -8,6 +8,7 @@ from core.core.storage import s3_storage
 from core.core import auth as core_auth
 from users import schemas as users_schemas
 from . import crud, schemas
+import imghdr
 
 router = APIRouter(
     prefix="/files",
@@ -15,45 +16,61 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 
-# --- Private (Admin) Endpoints ---
+# def _do_upload_file(db: Session, file: UploadFile, s3_storage, validate_public: bool = False):
+#     # Validate public upload
+#     if validate_public:
+#         allowed_types = ["image/jpeg", "image/png", "image/gif", "image/webp", "application/pdf"]
+#         if file.content_type not in allowed_types:
+#             raise HTTPException(status_code=400, detail="Chỉ cho phép upload ảnh hoặc PDF")
+#         file.file.seek(0, 2)
+#         file_size = file.file.tell()
+#         file.file.seek(0)
+#         if file_size > 5 * 1024 * 1024:
+#             raise HTTPException(status_code=400, detail="Dung lượng file tối đa 5MB")
+#     # Check s3 client
+#     if not s3_storage.s3_client:
+#         raise HTTPException(
+#             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+#             detail="client is not available."
+#         )
+#     # Get file size before uploading
+#     file.file.seek(0, 2)
+#     file_size = file.file.tell()
+#     file.file.seek(0)
+#     file_url = s3_storage.upload_file(file=file)
+#     if file_url is None:
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail="Failed to upload file to"
+#         )
+#     filename_parts = file.filename.split('.')
+#     file_extension = filename_parts[-1] if len(filename_parts) > 1 else None
+#     file_data = schemas.FileCreate(
+#         filename=file.filename,
+#         file_url=file_url,
+#         content_type=file.content_type,
+#         file_extension=file_extension,
+#         size=file_size
+#     )
+#     db_file = crud.create_file(db=db, file=file_data)
+#     return db_file
 
 @router.post("/upload", response_model=schemas.File, dependencies=[Depends(core_auth.get_current_user)])
 def upload_file(
-    db: Session = Depends(get_db), 
+    db: Session = Depends(get_db),
     file: UploadFile = FastAPIFile(...)
 ):
-    if not s3_storage.s3_client:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="client is not available."
-        )
-
-    # Get file size before uploading
-    file.file.seek(0, 2)
-    file_size = file.file.tell()
-    file.file.seek(0)
-
-    file_url = s3_storage.upload_file(file=file)
-
-    if file_url is None:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-            detail="Failed to upload file to"
-        )
-
-    filename_parts = file.filename.split('.')
-    file_extension = filename_parts[-1] if len(filename_parts) > 1 else None
-
-    file_data = schemas.FileCreate(
-        filename=file.filename,
-        file_url=file_url,
-        content_type=file.content_type,
-        file_extension=file_extension,
-        size=file_size
-    )
-
-    db_file = crud.create_file(db=db, file=file_data)
-    return db_file
+    db_file = crud.upload_file(db, file, s3_storage, validate_public=False)
+    return {
+        "id": db_file.id,
+        "filename": db_file.filename,
+        "file_url": db_file.file_url,
+        "content_type": db_file.content_type,
+        "file_extension": db_file.file_extension,
+        "size": db_file.size,
+        "created_at": db_file.created_at,
+        "url": db_file.download_url
+    }
 
 @router.get("/", response_model=schemas.FileList)
 def get_file_list(
@@ -128,3 +145,20 @@ def get_public_file_detail(file_id: int, db: Session = Depends(get_db)):
     if db_file is None:
         raise HTTPException(status_code=404, detail="File not found")
     return db_file 
+
+@router.post("/public-upload", response_model=schemas.File)
+def public_upload_file(
+    db: Session = Depends(get_db),
+    file: UploadFile = FastAPIFile(...)
+):
+    db_file = crud.upload_file(db, file, s3_storage, validate_public=True)
+    return {
+        "id": db_file.id,
+        "filename": db_file.filename,
+        "file_url": db_file.file_url,
+        "content_type": db_file.content_type,
+        "file_extension": db_file.file_extension,
+        "size": db_file.size,
+        "created_at": db_file.created_at,
+        "url": db_file.download_url
+    }

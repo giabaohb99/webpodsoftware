@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="info-box">
+    <h2>🔔 Thông Báo Hệ Thống</h2>
+    <p><strong>Tiêu đề:</strong> {{ subject }}</p>
+    <p><strong>Thời gian:</strong> {{ timestamp }}</p>
+</div>
+
+<div class="content">
+    <h3>📋 Nội dung thông báo:</h3>
+    <div class="code">
+        {{ content|safe }}
+    </div>
+</div>
+
+{% if action_url %}
+<div style="text-align: center; margin: 30px 0;">
+    <a href="{{ action_url }}" class="button">Xem chi tiết</a>
+</div>
+{% endif %}
+
+{% if additional_info %}
+<div class="warning-box">
+    <h4>📝 Thông tin bổ sung:</h4>
+    <p>{{ additional_info }}</p>
+</div>
+{% endif %}
+{% endblock %} 

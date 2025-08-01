@@ -11,4 +11,8 @@ class File(Base):
     content_type = Column(String(100))
     file_extension = Column(String(20), index=True)
     size = Column(Float, comment="File size in bytes") # Using Float for size in bytes
-    created_at = Column(DateTime(timezone=True), server_default=func.now()) 
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    @property
+    def download_url(self):
+        return self.file_url 

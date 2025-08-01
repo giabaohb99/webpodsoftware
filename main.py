@@ -4,16 +4,21 @@ from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
 
 from core.core.config import settings
 from core.core.database import engine, Base
+
 # Import all models here so that Base has them registered
+# Import in order to avoid circular dependencies
 from users.models import *
-from employee.models import *
 from role.models import *
+from employee.models import *
+from file_storage.models import *
 from story.models import *
+from support.models import *
 
 from users.router import router as users_router
 from employee.router import router as employee_router
 from role.router import router as role_router
 from story.router import router as story_router
+from support.router import router as support_router
 from file_storage.router import router as file_storage_router
 
 from core.core.exceptions import APIError
@@ -51,6 +56,7 @@ app.include_router(users_router, prefix=settings.API_V1_STR)
 app.include_router(employee_router, prefix=settings.API_V1_STR)
 app.include_router(role_router, prefix=settings.API_V1_STR)
 app.include_router(story_router, prefix=settings.API_V1_STR)
+app.include_router(support_router, prefix=settings.API_V1_STR)
 app.include_router(file_storage_router, prefix=settings.API_V1_STR)
 
 @app.get("/")

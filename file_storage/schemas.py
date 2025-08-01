@@ -15,6 +15,7 @@ class FileCreate(FileBase):
 class File(FileBase):
     id: int
     created_at: datetime
+    url: str
 
     class Config:
         orm_mode = True

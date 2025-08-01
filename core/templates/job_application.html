@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="success-box">
+    <h2>📝 Đơn Ứng Tuyển Mới</h2>
+    <p>Một ứng viên mới đã gửi đơn ứng tuyển cho vị trí tuyển dụng.</p>
+</div>
+
+<div class="info-box">
+    <h3>👤 Thông tin ứng viên:</h3>
+    <ul>
+        <li><strong>Họ tên:</strong> <span class="highlight">{{ user_name }}</span></li>
+        <li><strong>Email:</strong> {{ user_email }}</li>
+        <li><strong>Thời gian ứng tuyển:</strong> {{ applied_at }}</li>
+        <li><strong>Vị trí ứng tuyển:</strong> {{ story_title }}</li>
+    </ul>
+</div>
+
+<div class="content">
+    <h3>📋 Thông tin đơn ứng tuyển:</h3>
+    <ul>
+        <li><strong>Tiêu đề:</strong> <span class="highlight">{{ support_title }}</span></li>
+        <li><strong>Mã đơn:</strong> {{ support_id }}</li>
+        <li><strong>Trạng thái:</strong> <span class="highlight">{{ status }}</span></li>
+    </ul>
+</div>
+
+<div class="content">
+    <h3>📝 Nội dung đơn ứng tuyển:</h3>
+    <div class="code">
+        {{ content|safe }}
+    </div>
+</div>
+
+{% if attachments %}
+<div class="warning-box">
+    <h4>📎 Tệp đính kèm:</h4>
+    <ul>
+        {% for attachment in attachments %}
+        <li>{{ attachment.filename }} ({{ attachment.size }})</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+<div style="text-align: center; margin: 30px 0;">
+    <a href="{{ admin_url }}" class="button">Xem chi tiết</a>
+    <a href="{{ contact_url }}" class="button" style="background-color: #28a745;">Liên hệ ứng viên</a>
+</div>
+
+<div class="info-box">
+    <h4>⚡ Hành động cần thiết:</h4>
+    <ol>
+        <li>Xem xét hồ sơ ứng viên</li>
+        <li>Kiểm tra tệp đính kèm</li>
+        <li>Đánh giá phù hợp với vị trí</li>
+        <li>Liên hệ ứng viên để phỏng vấn</li>
+    </ol>
+</div>
+
+{% if user_experience %}
+<div class="info-box">
+    <h4>💼 Kinh nghiệm ứng viên:</h4>
+    <div class="code">
+        {{ user_experience|safe }}
+    </div>
+</div>
+{% endif %}
+
+{% if priority_level %}
+<div class="error-box">
+    <h4>🎯 Mức độ ưu tiên:</h4>
+    <p>{{ priority_level }}</p>
+</div>
+{% endif %}
+{% endblock %} 

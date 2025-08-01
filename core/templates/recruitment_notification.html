@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="info-box">
+    <h2>🎯 Thông Báo Tuyển Dụng Mới</h2>
+    <p>Một bài đăng tuyển dụng mới đã được tạo và cần được xem xét.</p>
+</div>
+
+<div class="content">
+    <h3>📋 Thông tin bài đăng:</h3>
+    <ul>
+        <li><strong>Tiêu đề:</strong> <span class="highlight">{{ story_title }}</span></li>
+        <li><strong>Tác giả:</strong> {{ author_name }}</li>
+        <li><strong>Thời gian tạo:</strong> {{ created_at }}</li>
+        <li><strong>Loại:</strong> {{ story_type }}</li>
+    </ul>
+</div>
+
+{% if story_description %}
+<div class="content">
+    <h3>📝 Mô tả công việc:</h3>
+    <div class="code">
+        {{ story_description|safe }}
+    </div>
+</div>
+{% endif %}
+
+{% if story_requirements %}
+<div class="warning-box">
+    <h4>📋 Yêu cầu công việc:</h4>
+    <div class="code">
+        {{ story_requirements|safe }}
+    </div>
+</div>
+{% endif %}
+
+<div style="text-align: center; margin: 30px 0;">
+    <a href="{{ admin_url }}" class="button">Xem chi tiết</a>
+    <a href="{{ edit_url }}" class="button" style="background-color: #28a745;">Chỉnh sửa</a>
+</div>
+
+<div class="info-box">
+    <h4>⚡ Hành động cần thiết:</h4>
+    <ol>
+        <li>Xem xét nội dung bài đăng</li>
+        <li>Kiểm tra tính chính xác của thông tin</li>
+        <li>Phê duyệt hoặc yêu cầu chỉnh sửa</li>
+        <li>Đăng bài nếu đã phê duyệt</li>
+    </ol>
+</div>
+
+{% if additional_notes %}
+<div class="error-box">
+    <h4>📝 Ghi chú bổ sung:</h4>
+    <p>{{ additional_notes }}</p>
+</div>
+{% endif %}
+{% endblock %} 
