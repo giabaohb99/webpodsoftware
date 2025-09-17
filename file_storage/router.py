@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, UploadFile, File as FastAPIFile, HTTPException, status, Query
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from datetime import datetime
@@ -55,12 +56,18 @@ router = APIRouter(
 #     db_file = crud.create_file(db=db, file=file_data)
 #     return db_file
 
-@router.post("/upload", response_model=schemas.File, dependencies=[Depends(core_auth.get_current_user)])
+@router.post("/upload", response_model=schemas.FileWithThumbnails, dependencies=[Depends(core_auth.get_current_user)])
 def upload_file(
     db: Session = Depends(get_db),
     file: UploadFile = FastAPIFile(...)
 ):
     db_file = crud.upload_file(db, file, s3_storage, validate_public=False)
+    
+    # Generate thumbnail URLs if file is an image
+    thumbnails = None
+    if db_file.content_type and db_file.content_type.startswith('image/'):
+        thumbnails = crud.generate_thumbnail_urls_for_file(db_file.id)
+    
     return {
         "id": db_file.id,
         "filename": db_file.filename,
@@ -69,7 +76,8 @@ def upload_file(
         "file_extension": db_file.file_extension,
         "size": db_file.size,
         "created_at": db_file.created_at,
-        "url": db_file.download_url
+        "url": db_file.download_url,
+        "thumbnails": thumbnails
     }
 
 @router.get("/", response_model=schemas.FileList)
@@ -146,12 +154,18 @@ def get_public_file_detail(file_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="File not found")
     return db_file 
 
-@router.post("/public-upload", response_model=schemas.File)
+@router.post("/public-upload", response_model=schemas.FileWithThumbnails)
 def public_upload_file(
     db: Session = Depends(get_db),
     file: UploadFile = FastAPIFile(...)
 ):
     db_file = crud.upload_file(db, file, s3_storage, validate_public=True)
+    
+    # Generate thumbnail URLs if file is an image
+    thumbnails = None
+    if db_file.content_type and db_file.content_type.startswith('image/'):
+        thumbnails = crud.generate_thumbnail_urls_for_file(db_file.id)
+    
     return {
         "id": db_file.id,
         "filename": db_file.filename,
@@ -160,5 +174,160 @@ def public_upload_file(
         "file_extension": db_file.file_extension,
         "size": db_file.size,
         "created_at": db_file.created_at,
-        "url": db_file.download_url
+        "url": db_file.download_url,
+        "thumbnails": thumbnails
     }
+
+# --- Thumbnail Endpoints ---
+
+@router.get("/thumbnail/{file_id}", response_class=RedirectResponse)
+def get_thumbnail(
+    file_id: int,
+    w: int = Query(..., ge=50, le=2000, description="Width in pixels"),
+    h: int = Query(..., ge=50, le=2000, description="Height in pixels"),
+    format: str = Query("webp", regex="^(webp|jpg|jpeg|png)$", description="Output format"),
+    q: int = Query(80, ge=10, le=100, description="Quality (10-100)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get or create thumbnail for an image file.
+    Returns redirect to the thumbnail URL.
+    
+    Parameters:
+    - file_id: ID of the original file
+    - w: Width in pixels (50-2000)
+    - h: Height in pixels (50-2000) 
+    - format: Output format (webp, jpg, jpeg, png)
+    - q: Quality 10-100 (default 80)
+    """
+    try:
+        # Get or create thumbnail
+        thumbnail = crud.get_or_create_thumbnail(
+            db=db,
+            s3_storage=s3_storage,
+            file_id=file_id,
+            width=w,
+            height=h,
+            format=format,
+            quality=q
+        )
+        
+        # Redirect to thumbnail URL
+        return RedirectResponse(url=thumbnail.file_url, status_code=302)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error: {str(e)}"
+        )
+
+@router.get("/thumbnail/{file_id}/info", response_model=schemas.ThumbnailResponse)
+def get_thumbnail_info(
+    file_id: int,
+    w: int = Query(..., ge=50, le=2000),
+    h: int = Query(..., ge=50, le=2000),
+    format: str = Query("webp", regex="^(webp|jpg|jpeg|png)$"),
+    q: int = Query(80, ge=10, le=100),
+    db: Session = Depends(get_db)
+):
+    """
+    Get thumbnail information without redirecting.
+    Returns thumbnail metadata including URL.
+    """
+    try:
+        thumbnail = crud.get_or_create_thumbnail(
+            db=db,
+            s3_storage=s3_storage,
+            file_id=file_id,
+            width=w,
+            height=h,
+            format=format,
+            quality=q
+        )
+        
+        return thumbnail
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error: {str(e)}"
+        )
+
+@router.get("/thumbnail/{file_id}/list", response_model=List[schemas.ThumbnailResponse])
+def list_file_thumbnails(
+    file_id: int,
+    db: Session = Depends(get_db),
+    current_user: users_schemas.User = Depends(core_auth.get_current_user)
+):
+    """
+    List all existing thumbnails for a file.
+    Requires authentication.
+    """
+    # Check if original file exists
+    original_file = crud.get_file(db, file_id)
+    if not original_file:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Original file not found"
+        )
+    
+    # Get all thumbnails for this file
+    thumbnails = db.query(crud.models.Thumbnail).filter(
+        crud.models.Thumbnail.original_file_id == file_id
+    ).order_by(crud.models.Thumbnail.created_at.desc()).all()
+    
+    return thumbnails
+
+# --- Public Thumbnail Endpoints ---
+
+@router.get("/public/thumbnail/{file_id}", response_class=RedirectResponse)
+def get_public_thumbnail(
+    file_id: int,
+    w: int = Query(..., ge=50, le=1000, description="Width in pixels (public limited to 1000px)"),
+    h: int = Query(..., ge=50, le=1000, description="Height in pixels (public limited to 1000px)"),
+    format: str = Query("webp", regex="^(webp|jpg|png)$", description="Output format"),
+    q: int = Query(80, ge=50, le=90, description="Quality 50-90 (public limited)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Public endpoint to get thumbnails.
+    More restrictive limits for public usage.
+    """
+    # Check if original file is public (image only)
+    original_file = crud.get_file(db, file_id)
+    if not original_file:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File not found"
+        )
+    
+    if not original_file.content_type or not original_file.content_type.startswith('image/'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only image files are available for public thumbnails"
+        )
+    
+    try:
+        thumbnail = crud.get_or_create_thumbnail(
+            db=db,
+            s3_storage=s3_storage,
+            file_id=file_id,
+            width=w,
+            height=h,
+            format=format,
+            quality=q
+        )
+        
+        return RedirectResponse(url=thumbnail.file_url, status_code=302)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error: {str(e)}"
+        )

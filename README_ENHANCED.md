@@ -6,6 +6,8 @@ Hệ thống đã được mở rộng với các tính năng mới:
 - ✅ **Story Categories và Types** (article, report, recruitment)
 - ✅ **Support System** với file attachments và source tracking
 - ✅ **Email Notifications** cho recruitment workflow
+- ✅ **File Storage & CDN** với thumbnail generation
+- ✅ **Image Processing** với Pillow integration
 - ✅ **Database Schema** được cập nhật với relationships
 - ✅ **API Documentation** đầy đủ
 
@@ -28,6 +30,15 @@ Hệ thống đã được mở rộng với các tính năng mới:
                     │ • MySQL 8.0     │
                     │ • Redis Cache   │
                     │ • File Storage  │
+                    └─────────────────┘
+                                 │
+                    ┌─────────────────┐
+                    │  CDN/Thumbnail  │
+                    │                 │
+                    │ • Image Resize  │
+                    │ • Format Conv   │
+                    │ • S3 Storage    │
+                    │ • Cache Layer   │
                     └─────────────────┘
 ```
 
@@ -73,6 +84,9 @@ FROM_EMAIL=noreply@example.com
 
 ### 2. Start Services
 ```bash
+# Build with new dependencies (first time)
+docker-compose build --no-cache
+
 # Start all services
 docker-compose up -d
 
@@ -83,7 +97,17 @@ docker ps
 docker logs backend-fastapi-middlerware-app-1
 ```
 
-### 3. Seed Data
+**Note:** First build sẽ mất thời gian hơn do cài đặt Pillow và system dependencies.
+
+### 3. Database Migration
+```bash
+# Create thumbnails table (if not exists)
+docker exec -it backend-fastapi-middlerware-db-1 mysql -u user -ppassword users_db < create_thumbnails_table.sql
+
+# Or run SQL manually in Adminer (http://localhost:8080)
+```
+
+### 4. Seed Data
 ```bash
 # Seed categories
 docker exec -it backend-fastapi-middlerware-app-1 python seed_categories_minimal.py
@@ -148,6 +172,106 @@ CREATE TABLE support_files (
 );
 ```
 
+### File Storage & Thumbnails
+```sql
+-- Files table
+CREATE TABLE files (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    filename VARCHAR(255),
+    file_url VARCHAR(512) NOT NULL,
+    content_type VARCHAR(100),
+    file_extension VARCHAR(20),
+    size FLOAT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Thumbnails table
+CREATE TABLE thumbnails (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    original_file_id INT NOT NULL,
+    width INT NOT NULL,
+    height INT NOT NULL,
+    quality INT DEFAULT 80,
+    format VARCHAR(10) DEFAULT 'webp',
+    file_url VARCHAR(512) NOT NULL,
+    file_size FLOAT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_accessed TIMESTAMP,
+    access_count INT DEFAULT 0,
+    FOREIGN KEY (original_file_id) REFERENCES files(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_thumbnail (original_file_id, width, height, format, quality)
+);
+```
+
+## 🖼️ File Storage & CDN System
+
+### Features
+- ✅ **File Upload** - Support multiple formats (images, PDFs, etc.)
+- ✅ **S3 Integration** - Scalable cloud storage
+- ✅ **Image Processing** - Auto resize, format conversion
+- ✅ **Thumbnail Generation** - On-demand with caching
+- ✅ **CDN URLs** - Clean, branded URLs
+- ✅ **Performance** - Lazy loading, database caching
+
+### Thumbnail Sizes
+Khi upload ảnh, system auto-generate các size phổ biến:
+- **150x150** - Small thumbnail
+- **300x300** - Medium thumbnail
+- **600x600** - Large thumbnail
+- **800x600** - Landscape format
+
+### Usage Examples
+
+#### Upload File
+```bash
+POST /v1/files/public-upload
+Content-Type: multipart/form-data
+
+# Response includes thumbnail URLs
+{
+  "id": 8,
+  "filename": "template_141.png",
+  "file_url": "https://bucket.s3.region.amazonaws.com/uploads/uuid.png",
+  "content_type": "image/png",
+  "thumbnails": [
+    {
+      "width": 150,
+      "height": 150,
+      "url": "http://localhost:8000/v1/files/thumbnail/8?w=150&h=150"
+    },
+    {
+      "width": 300,
+      "height": 300,
+      "url": "http://localhost:8000/v1/files/thumbnail/8?w=300&h=300"
+    }
+  ]
+}
+```
+
+#### Get Thumbnail
+```bash
+# Redirect to optimized image
+GET /v1/files/thumbnail/8?w=400&h=400&format=webp&q=80
+
+# Get thumbnail info
+GET /v1/files/thumbnail/8/info?w=400&h=400
+
+# List all thumbnails for file
+GET /v1/files/thumbnail/8/list
+```
+
+#### Supported Parameters
+- **w, h** - Width, height (50-2000px)
+- **format** - webp, jpg, png (default: webp)
+- **q** - Quality 10-100 (default: 80)
+
+### CDN Benefits
+1. **Performance** - Cached thumbnails, optimized formats
+2. **Bandwidth** - Serve exact size needed
+3. **SEO** - Clean URLs, proper headers
+4. **Security** - Hide S3 structure, access control
+5. **Analytics** - Track usage patterns
+
 ## 🔌 API Endpoints
 
 ### Story APIs
@@ -167,12 +291,33 @@ CREATE TABLE support_files (
 | POST | `/v1/support/recruitment/{story_id}` | Submit job application | User |
 | GET | `/v1/support/source/{type}/{id}` | Get supports by source | Admin |
 
+### File Storage APIs
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| POST | `/v1/files/upload` | Upload file | Yes |
+| POST | `/v1/files/public-upload` | Upload file (public) | No |
+| GET | `/v1/files/` | List files | Yes |
+| GET | `/v1/files/public/` | List public images | No |
+| GET | `/v1/files/{file_id}` | Get file info | Yes |
+| GET | `/v1/files/public/{file_id}` | Get public file info | No |
+
+### Thumbnail APIs  
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| GET | `/v1/files/thumbnail/{file_id}` | Get thumbnail (redirect) | No |
+| GET | `/v1/files/thumbnail/{file_id}/info` | Get thumbnail info | No |
+| GET | `/v1/files/thumbnail/{file_id}/list` | List file thumbnails | Yes |
+| GET | `/v1/files/public/thumbnail/{file_id}` | Public thumbnail | No |
+
 ### Query Parameters
 - `story_type`: article, report, recruitment
 - `category_id`: ID của category
 - `keyword`: Tìm kiếm theo từ khóa
 - `support_type`: general, recruitment, technical
 - `status`: pending, in_progress, resolved
+- `w, h`: Thumbnail width, height (50-2000px)
+- `format`: webp, jpg, png (default: webp)
+- `q`: Quality 10-100 (default: 80)
 
 ## 📧 Email Notifications
 
